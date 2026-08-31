@@ -3,4 +3,4 @@ A simple command-line chess game, featuring turn-based gameplay, legal move vali
 
 Player vs. AI and AI vs. AI are WIP.
 
-`g++ -o ChessGame util.cpp board.cpp ai.cpp move.cpp piece.cpp main.cpp`
+`make run` to compile and run the program.
