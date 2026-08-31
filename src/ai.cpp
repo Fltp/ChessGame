@@ -1,4 +1,4 @@
-#include "ai.h"
+#include "../include/ai.h"
 
 std::vector<bool> hasAI = {false, false};
 std::vector<Move> possibleMoves;

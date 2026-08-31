@@ -1,4 +1,4 @@
-#include "move.h"
+#include "../include/move.h"
 
 Move::Move(void) : numbersFrom(boardSize), lettersFrom(boardSize), numbersTo(boardSize + 1), lettersTo(boardSize + 1), piece(NONE) {}
 Move::Move(int numbersTo, int lettersTo, Piece piece) : numbersFrom(boardSize), lettersFrom(boardSize), numbersTo(numbersTo), lettersTo(lettersTo), piece(piece) {}

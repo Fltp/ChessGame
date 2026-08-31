@@ -1,4 +1,4 @@
-#include "piece.h"
+#include "../include/piece.h"
 
 std::ostream& operator<< (std::ostream& out, const Piece& p)
 {

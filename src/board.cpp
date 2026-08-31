@@ -1,4 +1,4 @@
-#include "board.h"
+#include "../include/board.h"
 
 Color currPlayer = WHITE;
 Square board[boardSize][boardSize];
