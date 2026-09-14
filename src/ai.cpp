@@ -2,7 +2,7 @@
 
 std::vector<bool> hasAI = {false, false};
 std::vector<Move> possibleMoves;
-int aiSearchDepth = 4;
+int aiSearchDepth = 3;
 
 void loadAiBoard(void)
 {
@@ -34,10 +34,6 @@ int pieceValue(Piece p)
 int getScoreForPosition(const int playerToCheck)
 {
     int score = 0;
-    int opponent = getOpponent(playerToCheck);
-
-    if (!hasMovesLeft(opponent) && isKingInCheck(opponent)) // results in mate
-        return 100000;
 
     for (int i = 0; i < boardSize; i++)
     {
@@ -50,9 +46,6 @@ int getScoreForPosition(const int playerToCheck)
             score += pieceValue(aiBoard[i][j].getPiece()) * (isPlayerPiece ? 1 : -1);
         }
     }
-
-    if (score < 0 && !hasMovesLeft(opponent)) // go for Stalemate if it sees a deficit of pieces
-        return 0;
     return score;
 }
 
@@ -94,6 +87,11 @@ void simulateMove(Move m)
     int toRow   = m.numbersTo;
     int toCol   = m.lettersTo;
 
+    if (m.piece == KING)
+    {
+        kingPos[aiBoard[fromRow][fromCol].pieceIsWhite() ? WHITE : BLACK] = toRow + toCol * boardSize;
+    }
+
     aiBoard[toRow][toCol] = aiBoard[fromRow][fromCol];
     aiBoard[fromRow][fromCol] = Square();
 }
@@ -105,14 +103,49 @@ void restoreSimulatedMove(Move m, Square savedSquare)
     int toRow   = m.numbersTo;
     int toCol   = m.lettersTo;
 
+    if (m.piece == KING)
+    {
+        kingPos[aiBoard[toRow][toCol].pieceIsWhite() ? WHITE : BLACK] = fromRow + fromCol * boardSize;
+    }
+
     aiBoard[fromRow][fromCol] = aiBoard[toRow][toCol];
     aiBoard[toRow][toCol] = savedSquare;
+}
+
+int resolveCaptures(int playerToMove, int alpha, int beta)
+{
+    int currPosScore = getScoreForPosition(playerToMove);
+
+    if (currPosScore >= beta)
+        return beta;
+    if (currPosScore > alpha)
+        alpha = currPosScore;
+
+    std::vector<Move> moves = generatePossibleMoves(playerToMove);
+    for (const Move& m : moves)
+    {
+        if (!aiBoard[m.numbersTo][m.lettersTo].squareHasPiece()) // captures only
+            continue;
+
+        Square savedSquare = aiBoard[m.numbersTo][m.lettersTo];
+        simulateMove(m);
+
+        int score = -resolveCaptures(getOpponent(playerToMove), -beta, -alpha);
+
+        restoreSimulatedMove(m, savedSquare);
+
+        if (score >= beta)
+            return beta;
+        if (score > alpha)
+            alpha = score;
+    }
+    return alpha;
 }
 
 int negamax(int playerToMove, int depth, int alpha, int beta)
 {
     if (depth == 0)
-        return getScoreForPosition(playerToMove);
+        return resolveCaptures(playerToMove, alpha, beta);
 
     std::vector<Move> moves = generatePossibleMoves(playerToMove);
     if (moves.empty())

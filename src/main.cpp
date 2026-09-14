@@ -41,6 +41,10 @@ int main()
             Move bestMove = getBestMove();
             runningAICalcs = false;
 
+            // AI "thinks" about their move
+            int thinkTime = std::min(1600, 200 + (int)possibleMoves.size() * 15);
+            std::this_thread::sleep_for(std::chrono::milliseconds(thinkTime));
+
             std::cout << bestMove << ".\n";
 
             Square destSquare = *getBoardPosition(bestMove.numbersTo, bestMove.lettersTo);
