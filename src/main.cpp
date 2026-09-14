@@ -14,15 +14,15 @@ int main()
     initializeBoard(setting);
     for (int i = 0; i < numPlayers; i++)
     {
-        // std::cout << "Should " << getPlayerName(i) << " be controlled by the computer?\n";
-        // std::cin >> input;
-        // if (input == "Yes" || input == "yes" || input == "y" || input == "Y")
-        //     hasAI[i] = true;
-        // else
+        std::cout << "Should " << getPlayerName(i) << " be controlled by the computer?\n";
+        std::cin >> input;
+        if (input == "Yes" || input == "yes" || input == "y" || input == "Y")
+            hasAI[i] = true;
+        else
             hasAI[i] = false;
     }
     printBoard();
-    while (hasMovesLeft(currPlayer))
+    while (hasMovesLeft(currPlayer) && !gameOver)
     {
         int playerTurn = (int)currPlayer;
         if (!hasAI[playerTurn])
@@ -37,8 +37,17 @@ int main()
         else
         {
             runningAICalcs = true;
-            interpretMove(getBestMove());
+            std::cout << getPlayerName(playerTurn) << " is thinking...\n";
+            Move bestMove = getBestMove();
             runningAICalcs = false;
+
+            std::cout << bestMove << ".\n";
+
+            Square destSquare = *getBoardPosition(bestMove.numbersTo, bestMove.lettersTo);
+            isCapture = destSquare.squareHasPiece() && destSquare.pieceIsWhite() != playerIsWhite(currPlayer);
+            isCastling = false;
+
+            interpretMove(bestMove);
         }
         printBoard();
     }

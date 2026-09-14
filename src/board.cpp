@@ -12,12 +12,49 @@ std::vector<MoveCase> lastMoveCase = {NO_MOVE, NO_MOVE};
 bool rookMoved[numPlayers][2] = {false};
 std::vector<int> rookStartingPos = {0, 0};
 bool runningAICalcs = false;
+std::map<std::string, int> positionHistory;
+bool gameOver = false;
+
+std::string getPositionKey(void)
+{
+    std::string key;
+    key.reserve(70);
+
+    for (int i = 0; i < boardSize; i++)
+    {
+        for (int j = 0; j < boardSize; j++)
+        {
+            Square* sq = getBoardPosition(i, j);
+            if (!sq->squareHasPiece())
+            {
+                key += '.';
+                continue;
+            }
+            char c = "-PRNBQK"[sq->getPiece()];
+            key += sq->pieceIsWhite() ? c : (char)tolower(c);
+        }
+    }
+    key += (currPlayer == WHITE) ? 'W' : 'B';
+
+    int opponent = getOpponent(currPlayer);
+    key += (lastMoveCase[opponent] == PAWN_2) ? (char)('a' + lastMove[opponent].lettersTo) : '-';
+
+    return key;
+}
 
 Square *getBoardPosition(int number, int letter)
 {
     if (runningAICalcs)
         return &aiBoard[number][letter];
     return &board[number][letter];
+}
+
+void setBoardPosition(int number, int letter, Square sq)
+{
+    if (runningAICalcs)
+        aiBoard[number][letter] = sq;
+    else
+        board[number][letter] = sq;
 }
 
 Color getPlayerColor(const int player)
@@ -77,7 +114,9 @@ void initializeBoard(const int setting)
     currPlayer = WHITE;
     isCastling = false;
     isCapture = false;
+    gameOver = false;
     promotionPiece = NONE;
+    positionHistory.clear();
     if (setting > CHESS_REGULAR)
     {
         int minimumSwaps = 10;
@@ -101,17 +140,17 @@ void initializeBoard(const int setting)
             switch (i)
             {
                 default:
-                    board[i][j].setPiece(NONE, NO_COLOR);
+                    getBoardPosition(i, j)->setPiece(NONE, NO_COLOR);
                     break;
                 case 0: case 7:
-                    board[i][j].setPiece(piece, (i < 2) ? WHITE : BLACK);
+                    getBoardPosition(i, j)->setPiece(piece, (i < 2) ? WHITE : BLACK);
                     if (piece == KING)
                         kingPos[i == 7] = i + j * boardSize;
                     if (piece == ROOK)
                         rookStartingPos[rookNum++] = j;
                     break;
                 case 1: case 6:
-                    board[i][j].setPiece(PAWN, (i < 2) ? WHITE : BLACK);
+                    getBoardPosition(i, j)->setPiece(PAWN, (i < 2) ? WHITE : BLACK);
                     break;
             }
         }
@@ -128,13 +167,13 @@ void printBoard(void)
         std::cout << i << " | ";
         for (int j = 0; j < boardSize; j++)
         {
-            if (board[i - 1][j].pieceIsWhite())
+            if (getBoardPosition(i - 1, j)->pieceIsWhite())
                 std::cout << "White ";
-            else if (board[i - 1][j].squareHasPiece())
+            else if (getBoardPosition(i - 1, j)->squareHasPiece())
                 std::cout << "Black ";
             else
                 std::cout << "      ";
-            std::cout << board[i - 1][j].getPiece() << " | ";
+            std::cout << getBoardPosition(i - 1, j)->getPiece() << " | ";
         }
         std::cout << "\n";
         // std::cout << "  |         |         |         |         |         |         |         |         |\n";
@@ -148,33 +187,33 @@ void printBoard(void)
 bool checkKingDanger(int numberFrom, int letterFrom, int numberTo, int letterTo, const int playerToCheck)
 {
     // Moving piece away would cause King to be in check?
-    Square temp = board[numberFrom][letterFrom];
+    Square temp = *(getBoardPosition(numberFrom, letterFrom));
     if (!isKingInCheck(playerToCheck))
     {
-        board[numberFrom][letterFrom].setEmpty();
+        getBoardPosition(numberFrom, letterFrom)->setEmpty();
         if (isKingInCheck(playerToCheck))
         {
-            board[numberFrom][letterFrom] = temp;
+            setBoardPosition(numberFrom, letterFrom, temp);
             return true;
         }
     }
-    board[numberFrom][letterFrom].setEmpty();
+    getBoardPosition(numberFrom, letterFrom)->setEmpty();
     int kingPosition = kingPos[playerToCheck];
     if (temp.getPiece() == KING)
         kingPos[playerToCheck] = numberTo + letterTo * boardSize;
 
     // Moving piece to this spot doesn't prevent check?
-    Square temp2 = board[numberTo][letterTo];
-    board[numberTo][letterTo] = temp;
+    Square temp2 = *(getBoardPosition(numberTo, letterTo));
+    setBoardPosition(numberTo, letterTo, temp);
     if (isKingInCheck(playerToCheck))
     {
-        board[numberFrom][letterFrom] = temp;
-        board[numberTo][letterTo] = temp2;
+        setBoardPosition(numberFrom, letterFrom, temp);
+        setBoardPosition(numberTo, letterTo, temp2);
         kingPos[playerToCheck] = kingPosition;
         return true;
     }
-    board[numberFrom][letterFrom] = temp;
-    board[numberTo][letterTo] = temp2;
+    setBoardPosition(numberFrom, letterFrom, temp);
+    setBoardPosition(numberTo, letterTo, temp2);
     kingPos[playerToCheck] = kingPosition;
     return false;
 }
@@ -198,7 +237,7 @@ bool hasMovesLeft(const int playerToCheck)
             {
                 if (i == number && j == letter)
                     continue;
-                if (!board[i][j].squareHasPiece() || board[i][j].pieceIsWhite() != (playerToCheck == WHITE))
+                if (!getBoardPosition(i, j)->squareHasPiece() || getBoardPosition(i, j)->pieceIsWhite() != (playerToCheck == WHITE))
                     continue;
 
                 if (checkKingDanger(i, j, number, letter, playerToCheck))
@@ -214,11 +253,11 @@ bool hasMovesLeft(const int playerToCheck)
 
 int getCastlingRookLetter(int numbersFrom, int lettersFrom, int kingLettersTo)
 {
-    bool fromIsWhite = board[numbersFrom][lettersFrom].pieceIsWhite();
+    bool fromIsWhite = getBoardPosition(numbersFrom, lettersFrom)->pieceIsWhite();
     bool movingToC = kingLettersTo == LETTER_c;
     int lettersFromRook = movingToC ? LETTER_a : LETTER_h;
 
-    while (lettersFromRook != rookStartingPos[!movingToC] || fromIsWhite != board[numbersFrom][lettersFromRook].pieceIsWhite())
+    while (lettersFromRook != rookStartingPos[!movingToC] || fromIsWhite != getBoardPosition(numbersFrom, lettersFromRook)->pieceIsWhite())
     {
         if (movingToC)
             lettersFromRook++;
@@ -233,8 +272,6 @@ bool isCastlingMovementInCheck(Move m, const int playerToCheck)
     int kingPosition = kingPos[playerToCheck];
     int numbersFrom = kingPosition % 8;
     int lettersFrom = kingPosition / 8;
-    int lettersFromRook = getCastlingRookLetter(numbersFrom, lettersFrom, m.lettersTo);
-    int lettersToRook = (m.lettersTo == LETTER_c) ? LETTER_d : LETTER_f;
     int rangeMin = min(lettersFrom, m.lettersTo);
     int rangeMax = max(lettersFrom, m.lettersTo);
 
@@ -265,8 +302,16 @@ bool isSquareInCheck(int number, int letter, const int playerAction)
         {
             if (i == number && j == letter)
                 continue;
-            if (board[i][j].pieceIsWhite() == isKingWhite)
+            if (getBoardPosition(i, j)->pieceIsWhite() == isKingWhite)
                 continue;
+            if (getBoardPosition(i, j)->getPiece() == PAWN)
+            {
+                bool pieceIsWhite = getBoardPosition(i, j)->pieceIsWhite();
+                if (getTrueNumDist(i, number, pieceIsWhite) == 1 && moduleOf(j - letter) == 1)
+                    return true;
+                continue;
+            }
+
             if (canMove(i, j, number, letter, false))
                 return true;
         }
@@ -278,7 +323,7 @@ bool isMovementObstructedCastling(int numbersFrom, int lettersFrom, int numbersT
 {
     int additiveNums = signal(numbersTo - numbersFrom);
     int additiveLets = signal(lettersTo - lettersFrom);
-    Piece pieceFrom = board[numbersFrom][lettersFrom].getPiece();
+    Piece pieceFrom = getBoardPosition(numbersFrom, lettersFrom)->getPiece();
     if (numbersFrom == numbersTo || lettersFrom == lettersTo)
     {
         for (int x = numbersFrom; x != numbersTo + additiveNums; x += additiveNums)
@@ -292,11 +337,11 @@ bool isMovementObstructedCastling(int numbersFrom, int lettersFrom, int numbersT
                 if (x == numbersTo && y == lettersTo
                  && pieceFrom != PAWN
                  && ((letterException != boardSize
-                   && board[x][y].squareHasPiece()
-                   && board[x][y].pieceIsWhite() != board[numbersFrom][lettersFrom].pieceIsWhite())
+                   && getBoardPosition(x, y)->squareHasPiece()
+                   && getBoardPosition(x, y)->pieceIsWhite() != getBoardPosition(numbersFrom, lettersFrom)->pieceIsWhite())
                   || letterException == boardSize))
                     return false;
-                if (board[x][y].squareHasPiece())
+                if (getBoardPosition(x, y)->squareHasPiece())
                     return true;
             }
         }
@@ -309,7 +354,7 @@ bool isMovementObstructedCastling(int numbersFrom, int lettersFrom, int numbersT
             int y = additiveLets * i + lettersFrom;
             if (x == numbersTo)
                 return false;
-            if (board[x][y].squareHasPiece())
+            if (getBoardPosition(x, y)->squareHasPiece())
                 return true;
         }
     }
@@ -334,11 +379,11 @@ bool canKnightMove(int distNums, int distLets)
 
 bool canMove(int numbersFrom, int lettersFrom, int numbersTo, int lettersTo, bool doingMove)
 {
-    Square from = board[numbersFrom][lettersFrom];
+    Square from = *(getBoardPosition(numbersFrom, lettersFrom));
     Color fromColor = from.getColor();
     bool fromIsWhite = fromColor == WHITE;
-    Square to = board[numbersTo][lettersTo];
-    Piece piece = board[numbersFrom][lettersFrom].getPiece();
+    Square to = *(getBoardPosition(numbersTo, lettersTo));
+    Piece piece = getBoardPosition(numbersFrom, lettersFrom)->getPiece();
     int opponent = getOpponent(currPlayer);
 
     // Square to move to is occupied by allied piece
@@ -374,10 +419,10 @@ bool canMove(int numbersFrom, int lettersFrom, int numbersTo, int lettersTo, boo
                   && moduleOf(lettersFrom - lettersTo) == 1
                   && lettersTo == lastMove[opponent].lettersTo
                   && numbersFrom == lastMove[opponent].numbersTo
-                  && fromIsWhite != board[numbersFrom][lettersTo].pieceIsWhite())
+                  && fromIsWhite != getBoardPosition(numbersFrom, lettersTo)->pieceIsWhite())
             {
                 if (doingMove)
-                    board[numbersFrom][lettersTo].setEmpty();
+                    getBoardPosition(numbersFrom, lettersTo)->setEmpty();
                 return true;
             }
             return false;
@@ -405,9 +450,9 @@ bool canMove(int numbersFrom, int lettersFrom, int numbersTo, int lettersTo, boo
                     return false;
                 if (doingMove)
                 {
-                    board[numbersFrom][lettersToRook].setPiece(ROOK, fromColor);
+                    getBoardPosition(numbersFrom, lettersToRook)->setPiece(ROOK, fromColor);
                     if (lettersToRook != lettersFromRook)
-                        board[numbersFrom][lettersFromRook].setEmpty();
+                        getBoardPosition(numbersFrom, lettersFromRook)->setEmpty();
                 }
                 return true;
             }
@@ -435,7 +480,8 @@ bool canMove(int numbersFrom, int lettersFrom, int numbersTo, int lettersTo, boo
 
 bool tryMove(int numbersFrom, int lettersFrom, Move move, MoveErrorCode& err)
 {
-    if (board[numbersFrom][lettersFrom].getPiece() != move.piece || board[numbersFrom][lettersFrom].pieceIsWhite() != (playerIsWhite(currPlayer)))
+    if (getBoardPosition(numbersFrom, lettersFrom)->getPiece() != move.piece
+     || getBoardPosition(numbersFrom, lettersFrom)->pieceIsWhite() != (playerIsWhite(currPlayer)))
         return false;
 
     if (!canMove(numbersFrom, lettersFrom, move.numbersTo, move.lettersTo, false))
@@ -493,11 +539,11 @@ void interpretMove(Move m)
     if (m.numbersTo < 0 || m.lettersTo < 0 || m.numbersTo >= boardSize || m.lettersTo >= boardSize)
         ERROR_MACRO("Move out of board bounds.");
     if (isCastling && rookMoved[currPlayer][m.lettersTo == LETTER_g])
-        ERROR_MACRO(m << "Rook or King has already moved.");
+        ERROR_MACRO(m << " - Rook or King has already moved.");
     if (isCastling && isCastlingMovementInCheck(m, currPlayer))
-        ERROR_MACRO(m << "Move goes through Check.");
+        ERROR_MACRO(m << " - Move goes through Check.");
     if (m.piece == KING && isSquareInCheck(m.numbersTo, m.lettersTo, currPlayer))
-        ERROR_MACRO(m << "Moving to that space would put you in Check.");
+        ERROR_MACRO(m << " - Moving to that space would put you in Check.");
 
     for (int i = startingNums; i <= endingNums; i++)
     {
@@ -506,7 +552,7 @@ void interpretMove(Move m)
             if (tryMove(i, j, m, errorCode))
             {
                 if (numbersMoveFrom != boardSize)
-                    ERROR_MACRO(m << "Move specified is too vague, please include the coordinates of the piece you want to move.");
+                    ERROR_MACRO(m << " - Move specified is too vague, please include the coordinates of the piece you want to move.");
                 numbersMoveFrom = i;
                 lettersMoveFrom = j;
             }
@@ -515,44 +561,53 @@ void interpretMove(Move m)
     
     if (numbersMoveFrom == boardSize)
     {
-        if (board[m.numbersTo][m.lettersTo].squareHasPiece() && board[m.numbersTo][m.lettersTo].pieceIsWhite() == playerIsWhite(currPlayer))
-            ERROR_MACRO(m << "Space is occupied by a piece of the same color.");
+        if (getBoardPosition(m.numbersTo, m.lettersTo)->squareHasPiece()
+         && getBoardPosition(m.numbersTo, m.lettersTo)->pieceIsWhite() == playerIsWhite(currPlayer))
+            ERROR_MACRO(m << " - Space is occupied by a piece of the same color.");
 
         switch (errorCode)
         {
             case NO_ERROR:
-                ERROR_MACRO(m << "Couldn't find the specified move.");
+                ERROR_MACRO(m << " - Couldn't find the specified move.");
                 break;
             case MOVE_OPENS_CHECK:
-                ERROR_MACRO(m << "Move would open Check.");
+                ERROR_MACRO(m << " - Move would open Check.");
                 break;
             case MOVE_DOESNT_PREVENT_CHECK:
-                ERROR_MACRO(m << "Move does not get out of Check.");
+                ERROR_MACRO(m << " - Move does not get out of Check.");
                 break;
         }
     }
     
-    if (isCapture != (board[m.numbersTo][m.lettersTo].squareHasPiece() && board[m.numbersTo][m.lettersTo].pieceIsWhite() != playerIsWhite(currPlayer)))
-        ERROR_MACRO(m << "Wrong indication of whether move is a capture or not");
+    if (isCapture != (getBoardPosition(m.numbersTo, m.lettersTo)->squareHasPiece()
+     && getBoardPosition(m.numbersTo, m.lettersTo)->pieceIsWhite() != playerIsWhite(currPlayer)))
+        ERROR_MACRO(m << " - Wrong indication of whether move is a capture or not");
 
     lastMove[currPlayer] = Move(0, 0, NONE);
     lastMoveCase[currPlayer] = NO_MOVE;
     canMove(numbersMoveFrom, lettersMoveFrom, m.numbersTo, m.lettersTo, true);
-    board[m.numbersTo][m.lettersTo].setPiece(m.piece, getPlayerColor(currPlayer));
-    if (board[numbersMoveFrom][lettersMoveFrom].getPiece() == m.piece)
-        board[numbersMoveFrom][lettersMoveFrom].setEmpty();
+    getBoardPosition(m.numbersTo, m.lettersTo)->setPiece(m.piece, getPlayerColor(currPlayer));
+    if (getBoardPosition(numbersMoveFrom, lettersMoveFrom)->getPiece() == m.piece)
+        getBoardPosition(numbersMoveFrom, lettersMoveFrom)->setEmpty();
 
     if (m.piece == PAWN && m.numbersTo == (playerIsWhite(currPlayer) * 7))
     {
         while (promotionPiece == NONE)
         {
-            std::cout << "Select promotion piece: ";
-            std::string input;
-            std::cin >> input;
-            std::cout << "\n";
-            promotionPiece = interpretPiece(input);
+            if (!runningAICalcs)
+            {
+                std::cout << "Select promotion piece: ";
+                std::string input;
+                std::cin >> input;
+                std::cout << "\n";
+                promotionPiece = interpretPiece(input);
+            }
+            else
+            {
+                promotionPiece = QUEEN;
+            }
         }
-        board[m.numbersTo][m.lettersTo].setPiece(promotionPiece, getPlayerColor(currPlayer));
+        getBoardPosition(m.numbersTo, m.lettersTo)->setPiece(promotionPiece, getPlayerColor(currPlayer));
     }
     else if (m.piece == KING)
     {
@@ -578,12 +633,20 @@ void interpretMove(Move m)
     isCastling = false;
     isCapture = false;
     promotionPiece = NONE;
-    if (!hasMovesLeft(currPlayer))
+
+    if (++positionHistory[getPositionKey()] >= 3)
+    {
+        std::cout << "\nDRAW by threefold repetition!\n\n";
+        gameOver = true;
+    }
+    else if (!hasMovesLeft(currPlayer))
     {
         if (isKingInCheck(currPlayer))
             std::cout << "\nCHECKMATE! " << (getPlayerName(getOpponent(currPlayer))) << " wins!\n\n";
         else
             std::cout << "\nSTALEMATE! " << (getPlayerName(getOpponent(currPlayer))) << " has no moves left!\n\n";
+
+        gameOver = true;
     }
     else if (isKingInCheck(currPlayer))
     {

@@ -2,6 +2,7 @@
 
 std::vector<bool> hasAI = {false, false};
 std::vector<Move> possibleMoves;
+int aiSearchDepth = 4;
 
 void loadAiBoard(void)
 {
@@ -12,6 +13,22 @@ void loadAiBoard(void)
             aiBoard[i][j] = board[i][j];
         }
     }
+}
+
+int pieceValue(Piece p)
+{
+    switch (p)
+    {
+        case PAWN:      return 1;
+        case KNIGHT:    return 3;
+        case BISHOP:    return 3;
+        case ROOK:      return 5;
+        case QUEEN:     return 9;
+        case KING:      return 100;
+        default:
+            break;
+    }
+    return 0;
 }
 
 int getScoreForPosition(const int playerToCheck)
@@ -26,33 +43,48 @@ int getScoreForPosition(const int playerToCheck)
     {
         for (int j = 0; j < boardSize; j++)
         {
-            switch (aiBoard[i][j].getPiece())
-            {
-                case PAWN:
-                    score += 1 * (playerToCheck == aiBoard[i][j].pieceIsWhite() ? -1 : 1);
-                    break;
-                case BISHOP:
-                case KNIGHT:
-                    score += 3 * (playerToCheck == aiBoard[i][j].pieceIsWhite() ? -1 : 1);
-                    break;
-                case ROOK:
-                    score += 5 * (playerToCheck == aiBoard[i][j].pieceIsWhite() ? -1 : 1);
-                    break;
-                case QUEEN:
-                    score += 9 * (playerToCheck == aiBoard[i][j].pieceIsWhite() ? -1 : 1);
-                    break;
-                case KING:
-                    score += 100 * (playerToCheck == aiBoard[i][j].pieceIsWhite() ? -1 : 1);
-                    break;
-                default:
-                    break;
-            }
+            if (!aiBoard[i][j].squareHasPiece())
+                continue;
+
+            bool isPlayerPiece = aiBoard[i][j].pieceIsWhite() == (playerToCheck == WHITE);
+            score += pieceValue(aiBoard[i][j].getPiece()) * (isPlayerPiece ? 1 : -1);
         }
     }
 
     if (score < 0 && !hasMovesLeft(opponent)) // go for Stalemate if it sees a deficit of pieces
         return 0;
     return score;
+}
+
+std::vector<Move> generatePossibleMoves(int playerToCheck)
+{
+    std::vector<Move> moves;
+    for (int i = 0; i < boardSize; i++)
+    {
+        for (int j = 0; j < boardSize; j++)
+        {
+            if (!aiBoard[i][j].squareHasPiece() || aiBoard[i][j].pieceIsWhite() != (playerToCheck == WHITE))
+                continue;
+
+            for (int number = 0; number < boardSize; number++)
+            {
+                for (int letter = 0; letter < boardSize; letter++)
+                {
+                    if (!canMove(i, j, number, letter, false))
+                        continue;
+                    if (checkKingDanger(i, j, number, letter, playerToCheck))
+                        continue;
+                    moves.push_back(Move(i, j, number, letter, aiBoard[i][j].getPiece()));
+                }
+            }
+        }
+    }
+    return moves;
+}
+
+void fillWithPossibleMoves(int playerToCheck)
+{
+    possibleMoves = generatePossibleMoves(playerToCheck);
 }
 
 void simulateMove(Move m)
@@ -66,67 +98,80 @@ void simulateMove(Move m)
     aiBoard[fromRow][fromCol] = Square();
 }
 
-int getScoreForMove(Move m)
+void restoreSimulatedMove(Move m, Square savedSquare)
 {
-    int numbersFrom = m.numbersFrom;
-    int lettersFrom = m.lettersFrom;
-    int numbersTo = m.numbersTo;
-    int lettersTo = m.lettersTo;
+    int fromRow = m.numbersFrom;
+    int fromCol = m.lettersFrom;
+    int toRow   = m.numbersTo;
+    int toCol   = m.lettersTo;
 
-    if (checkKingDanger(numbersFrom, lettersFrom, numbersTo, lettersTo, currPlayer)) // results in mate for self
-        return -100000;
-
-    Square savedSquare = aiBoard[numbersTo][lettersTo];
-
-    simulateMove(m);
-
-    int score = getScoreForPosition(currPlayer);
-
-    aiBoard[numbersFrom][lettersFrom] = aiBoard[numbersTo][lettersTo];
-    aiBoard[numbersTo][lettersTo] = savedSquare;
-    return score;
+    aiBoard[fromRow][fromCol] = aiBoard[toRow][toCol];
+    aiBoard[toRow][toCol] = savedSquare;
 }
 
-void fillWithPossibleMoves(int playerToCheck)
+int negamax(int playerToMove, int depth, int alpha, int beta)
 {
-    possibleMoves.clear();
-    for (int i = 0; i < boardSize; i++)
+    if (depth == 0)
+        return getScoreForPosition(playerToMove);
+
+    std::vector<Move> moves = generatePossibleMoves(playerToMove);
+    if (moves.empty())
+        return isKingInCheck(playerToMove) ? -100000 : 0; // checkmate vs stalemate
+
+    int best = -1000001;
+    for (const Move& m : moves)
     {
-        for (int j = 0; j < boardSize; j++)
-        {
-            for (int number = 0; number < boardSize; number++)
-            {
-                for (int letter = 0; letter < boardSize; letter++)
-                {
-                    if (!canMove(i, j, number, letter, false))
-                        continue;
+        Square savedSquare = aiBoard[m.numbersTo][m.lettersTo];
+        simulateMove(m);
 
-                    if (checkKingDanger(i, j, number, letter, playerToCheck))
-                        continue;
+        int score = -negamax(getOpponent(playerToMove), depth - 1, -beta, -alpha);
 
-                    possibleMoves.push_back(Move(i, j, number, letter, aiBoard[i][j].getPiece()));
-                }
-            }
-        }
+        restoreSimulatedMove(m, savedSquare);
+
+        if (score > best)
+            best = score;
+        if (best > alpha)
+            alpha = best;
+
+        // Opponent already has a better option elsewhere, stop searching this branch
+        if (alpha >= beta)
+            break;
     }
+    return best;
 }
 
 Move getBestMove(void)
 {
-    Move chosen, bestMove = Move();
-    int moveScoreMax = -100001, newMoveScore;
     loadAiBoard();
-    fillWithPossibleMoves(currPlayer);
+    possibleMoves = generatePossibleMoves(currPlayer);
+
+    int alpha = -1000001;
+    int beta = 1000001;
+    std::vector<Move> bestMoves;
 
     for (const Move& move : possibleMoves)
     {
-        int score = getScoreForMove(move);
+        Square savedSquare = aiBoard[move.numbersTo][move.lettersTo];
+        simulateMove(move);
 
-        if (score > moveScoreMax)
+        int score = -negamax(getOpponent(currPlayer), aiSearchDepth, -beta, -alpha);
+
+        restoreSimulatedMove(move, savedSquare);
+
+        if (score > alpha)
         {
-            moveScoreMax = score;
-            bestMove = move;
+            alpha = score;
+            bestMoves.clear();
+            bestMoves.push_back(move);
+        }
+        else if (score == alpha)
+        {
+            bestMoves.push_back(move);
         }
     }
-    return bestMove;
+
+    if (bestMoves.empty())
+        return Move();
+
+    return bestMoves[rand() % bestMoves.size()];
 }

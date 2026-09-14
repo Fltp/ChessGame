@@ -3,6 +3,8 @@
 
 #include <vector>
 #include <iostream>
+#include <string>
+#include <map>
 #include "piece.h"
 #include "move.h"
 #include "square.h"
@@ -29,8 +31,12 @@ extern std::vector<MoveCase> lastMoveCase;
 extern bool rookMoved[numPlayers][2];
 extern std::vector<int> rookStartingPos;
 extern bool runningAICalcs;
+extern std::map<std::string, int> positionHistory;
+extern bool gameOver;
 
+std::string getPositionKey(void);
 Square *getBoardPosition(int number, int letter);
+void setBoardPosition(int number, int letter, Square sq);
 Color getPlayerColor(const int player);
 void initializeBoard(const int setting);
 void printBoard(void);

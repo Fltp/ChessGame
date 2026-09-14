@@ -6,6 +6,6 @@ Move::Move(int numbersFrom, int lettersFrom, int numbersTo, int lettersTo, Piece
 
 std::ostream& operator<< (std::ostream& out, const Move& m)
 {
-    out << "Move: " << m.piece << " moves to " << (char)(m.lettersTo + 'a') << (m.numbersTo + 1) << " - ";
+    out << "Move: " << m.piece << " moves to " << (char)(m.lettersTo + 'a') << (m.numbersTo + 1);
     return out;
 }

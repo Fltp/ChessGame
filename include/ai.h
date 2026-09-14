@@ -6,11 +6,12 @@
 extern std::vector<bool> hasAI;
 extern std::vector<Move> possibleMoves;
 extern Square aiBoard[boardSize][boardSize];
+extern int aiSearchDepth;
 
-void alphaBeta(void);
 Move getBestMove(void);
 int getScoreForPosition(int playerToCheck);
-int getScoreForMove(Move m);
+int negamax(int playerToMove, int depth, int alpha, int beta);
+std::vector<Move> generatePossibleMoves(int playerToCheck);
 void fillWithPossibleMoves(int playerToCheck);
 void simulateMove(Move m);
 void loadAiBoard(void);
